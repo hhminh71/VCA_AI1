@@ -132,7 +132,7 @@ for message in st.session_state.messages:
 
 # --- XỬ LÝ INPUT CỦA NGƯỜI DÙNG ---
 
-if prompt := st.chat_input("Sếp nhập nội dung cần trao đổi ở đây nhé?"):
+if prompt := st.chat_input("Bạn nhập nội dung cần trao đổi ở đây nhé?"):
     # Thêm tin nhắn của người dùng vào lịch sử và hiển thị
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.markdown(f'<div class="user">{prompt}</div>', unsafe_allow_html=True)
