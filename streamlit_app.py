@@ -49,10 +49,8 @@ system_prompt = rfile("01.system_trainning.txt")
 initial_assistant_message_content = rfile("02.assistant.txt")
 
 # Khởi tạo model Gemini với system prompt
-# Bạn có thể đổi 'gemini-1.5-flash' thành model khác nếu muốn
-model_name = rfile("module_chatgpt.txt").strip() # Tái sử dụng file cũ để lấy tên model
-if not model_name:
-    model_name = 'gemini-1.5-flash' # Model mặc định nếu file rỗng
+# Cập nhật tên model thành gemini-2.5-pro theo yêu cầu
+model_name = 'gemini-2.5-pro' 
 
 try:
     model = genai.GenerativeModel(
@@ -149,4 +147,3 @@ if prompt := st.chat_input("Sếp nhập nội dung cần trao đổi ở đây 
 
     except Exception as e:
         st.error(f"Đã có lỗi xảy ra khi gọi API của Gemini: {e}")
-
