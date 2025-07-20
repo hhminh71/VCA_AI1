@@ -1,19 +1,28 @@
 import streamlit as st
-from openai import OpenAI
+import google.generativeai as genai
 import os
 
-# Hàm đọc nội dung từ file văn bản
+# --- CÁC HÀM TIỆN ÍCH ---
+
 def rfile(name_file):
-    with open(name_file, "r", encoding="utf-8") as file:
-        return file.read()
+    """Hàm đọc nội dung từ file văn bản."""
+    try:
+        with open(name_file, "r", encoding="utf-8") as file:
+            return file.read()
+    except FileNotFoundError:
+        st.error(f"Lỗi: Không tìm thấy file '{name_file}'. Vui lòng kiểm tra lại đường dẫn.")
+        return "" # Trả về chuỗi rỗng nếu file không tồn tại
+
+# --- CẤU HÌNH VÀ GIAO DIỆN ---
+
+# Cấu hình trang
+st.set_page_config(page_title="Trợ lý AI", page_icon="🤖")
 
 # Hiển thị logo (nếu có)
-try:
+if os.path.exists("logo.png"):
     col1, col2, col3 = st.columns([3, 2, 3])
     with col2:
         st.image("logo.png", use_container_width=True)
-except:
-    pass
 
 # Hiển thị tiêu đề
 title_content = rfile("00.xinchao.txt")
@@ -22,21 +31,47 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Lấy OpenAI API key từ st.secrets
-openai_api_key = st.secrets.get("OPENAI_API_KEY")
+# --- CẤU HÌNH API GEMINI ---
 
-# Khởi tạo OpenAI client
-client = OpenAI(api_key=openai_api_key)
+# Lấy Gemini API key từ st.secrets và cấu hình
+try:
+    gemini_api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=gemini_api_key)
+except (KeyError, AttributeError):
+    st.error("Lỗi: Vui lòng thiết lập 'GEMINI_API_KEY' trong mục Secrets của Streamlit.")
+    st.stop()
 
-# Khởi tạo tin nhắn "system" và "assistant"
-INITIAL_SYSTEM_MESSAGE = {"role": "system", "content": rfile("01.system_trainning.txt")}
-INITIAL_ASSISTANT_MESSAGE = {"role": "assistant", "content": rfile("02.assistant.txt")}
 
-# Kiểm tra nếu chưa có session lưu trữ thì khởi tạo tin nhắn ban đầu
+# --- KHỞI TẠO LỊCH SỬ CHAT ---
+
+# Đọc nội dung huấn luyện từ các file
+system_prompt = rfile("01.system_trainning.txt")
+initial_assistant_message_content = rfile("02.assistant.txt")
+
+# Khởi tạo model Gemini với system prompt
+# Bạn có thể đổi 'gemini-1.5-flash' thành model khác nếu muốn
+model_name = rfile("module_chatgpt.txt").strip() # Tái sử dụng file cũ để lấy tên model
+if not model_name:
+    model_name = 'gemini-1.5-flash' # Model mặc định nếu file rỗng
+
+try:
+    model = genai.GenerativeModel(
+        model_name=model_name,
+        system_instruction=system_prompt
+    )
+except Exception as e:
+    st.error(f"Lỗi khởi tạo model Gemini: {e}")
+    st.stop()
+
+
+# Khởi tạo session state để lưu lịch sử chat
 if "messages" not in st.session_state:
-    st.session_state.messages = [INITIAL_SYSTEM_MESSAGE, INITIAL_ASSISTANT_MESSAGE]
+    # Bắt đầu lịch sử với tin nhắn chào mừng của trợ lý
+    st.session_state.messages = [{"role": "assistant", "content": initial_assistant_message_content}]
 
-# CSS để căn chỉnh trợ lý bên trái, người hỏi bên phải, và thêm icon trợ lý
+# --- GIAO DIỆN CHAT ---
+
+# CSS để tùy chỉnh giao diện tin nhắn
 st.markdown(
     """
     <style>
@@ -44,51 +79,74 @@ st.markdown(
             padding: 10px;
             border-radius: 10px;
             max-width: 75%;
-            background: none; /* Màu trong suốt */
+            background: none;
             text-align: left;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
         }
         .user {
             padding: 10px;
             border-radius: 10px;
             max-width: 75%;
-            background: none; /* Màu trong suốt */
+            background: none;
             text-align: right;
             margin-left: auto;
         }
-        .assistant::before { content: "🤖 "; font-weight: bold; }
+        .assistant-icon {
+            font-size: 20px;
+            line-height: 1.5;
+        }
+        .message-content {
+            flex: 1;
+        }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# Hiển thị lịch sử tin nhắn (loại bỏ system để tránh hiển thị)
+# Hiển thị lịch sử tin nhắn đã lưu
 for message in st.session_state.messages:
     if message["role"] == "assistant":
-        st.markdown(f'<div class="assistant">{message["content"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="assistant"><span class="assistant-icon">🤖</span> <span class="message-content">{message["content"]}</span></div>', unsafe_allow_html=True)
     elif message["role"] == "user":
         st.markdown(f'<div class="user">{message["content"]}</div>', unsafe_allow_html=True)
 
-# Ô nhập liệu cho người dùng
+# --- XỬ LÝ INPUT CỦA NGƯỜI DÙNG ---
+
 if prompt := st.chat_input("Sếp nhập nội dung cần trao đổi ở đây nhé?"):
-    # Lưu tin nhắn người dùng vào session
+    # Thêm tin nhắn của người dùng vào lịch sử và hiển thị
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.markdown(f'<div class="user">{prompt}</div>', unsafe_allow_html=True)
 
-    # Tạo phản hồi từ API OpenAI
-    response = ""
-    stream = client.chat.completions.create(
-        model=rfile("module_chatgpt.txt").strip(),
-        messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
-        stream=True,
-    )
+    # Chuyển đổi lịch sử sang định dạng Gemini yêu cầu (user/model)
+    gemini_history = []
+    for msg in st.session_state.messages:
+        role = "model" if msg["role"] == "assistant" else "user"
+        gemini_history.append({"role": role, "parts": [msg["content"]]})
 
-    # Ghi lại phản hồi của trợ lý vào biến
-    for chunk in stream:
-        if chunk.choices:
-            response += chunk.choices[0].delta.content or ""
+    # Bắt đầu chat session và gửi tin nhắn
+    try:
+        # Bắt đầu chat với toàn bộ lịch sử trước đó
+        chat = model.start_chat(history=gemini_history[:-1]) # Gửi toàn bộ lịch sử trừ tin nhắn cuối cùng của user
+        
+        # Gửi tin nhắn cuối cùng của user để nhận phản hồi (streaming)
+        response_stream = chat.send_message(gemini_history[-1]['parts'][0], stream=True)
 
-    # Hiển thị phản hồi của trợ lý
-    st.markdown(f'<div class="assistant">{response}</div>', unsafe_allow_html=True)
+        # Hiển thị phản hồi của trợ lý (dạng streaming)
+        with st.chat_message("assistant", avatar="🤖"):
+            message_placeholder = st.empty()
+            full_response = ""
+            for chunk in response_stream:
+                # Đôi khi chunk không có text, cần kiểm tra
+                if hasattr(chunk, 'text'):
+                    full_response += chunk.text
+                    message_placeholder.markdown(full_response + "▌")
+            message_placeholder.markdown(full_response)
+        
+        # Lưu phản hồi hoàn chỉnh của trợ lý vào lịch sử
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-    # Cập nhật lịch sử tin nhắn trong session
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    except Exception as e:
+        st.error(f"Đã có lỗi xảy ra khi gọi API của Gemini: {e}")
+
