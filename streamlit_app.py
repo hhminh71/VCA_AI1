@@ -48,14 +48,34 @@ except (KeyError, AttributeError):
 system_prompt = rfile("01.system_trainning.txt")
 initial_assistant_message_content = rfile("02.assistant.txt")
 
-# Khởi tạo model Gemini với system prompt
-# Cập nhật tên model thành gemini-2.5-pro theo yêu cầu
-model_name = 'gemini-2.5-pro' 
+# Cấu hình an toàn để giảm khả năng bị chặn
+safety_settings = [
+    {
+        "category": "HARM_CATEGORY_HARASSMENT",
+        "threshold": "BLOCK_ONLY_HIGH",
+    },
+    {
+        "category": "HARM_CATEGORY_HATE_SPEECH",
+        "threshold": "BLOCK_ONLY_HIGH",
+    },
+    {
+        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "threshold": "BLOCK_ONLY_HIGH",
+    },
+    {
+        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+        "threshold": "BLOCK_ONLY_HIGH",
+    },
+]
+
+# Khởi tạo model Gemini với system prompt và cấu hình an toàn
+model_name = 'gemini-1.5-pro' # Sử dụng model 1.5 Pro ổn định
 
 try:
     model = genai.GenerativeModel(
         model_name=model_name,
-        system_instruction=system_prompt
+        system_instruction=system_prompt,
+        safety_settings=safety_settings
     )
 except Exception as e:
     st.error(f"Lỗi khởi tạo model Gemini: {e}")
@@ -125,25 +145,26 @@ if prompt := st.chat_input("Sếp nhập nội dung cần trao đổi ở đây 
 
     # Bắt đầu chat session và gửi tin nhắn
     try:
-        # Bắt đầu chat với toàn bộ lịch sử trước đó
-        chat = model.start_chat(history=gemini_history[:-1]) # Gửi toàn bộ lịch sử trừ tin nhắn cuối cùng của user
-        
-        # Gửi tin nhắn cuối cùng của user để nhận phản hồi (streaming)
+        chat = model.start_chat(history=gemini_history[:-1])
         response_stream = chat.send_message(gemini_history[-1]['parts'][0], stream=True)
 
         # Hiển thị phản hồi của trợ lý (dạng streaming)
         with st.chat_message("assistant", avatar="🤖"):
             message_placeholder = st.empty()
             full_response = ""
-            for chunk in response_stream:
-                # Đôi khi chunk không có text, cần kiểm tra
-                if hasattr(chunk, 'text'):
+            try:
+                for chunk in response_stream:
                     full_response += chunk.text
                     message_placeholder.markdown(full_response + "▌")
-            message_placeholder.markdown(full_response)
-        
-        # Lưu phản hồi hoàn chỉnh của trợ lý vào lịch sử
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+                message_placeholder.markdown(full_response)
+            except ValueError:
+                # Bắt lỗi nếu phản hồi bị chặn
+                message_placeholder.markdown("⚠️ Xin lỗi, phản hồi đã bị chặn do chính sách an toàn. Vui lòng thử lại với một câu hỏi khác.")
+                full_response = "⚠️ Phản hồi bị chặn." # Lưu tin nhắn lỗi vào lịch sử
+
+        # Chỉ lưu vào lịch sử nếu phản hồi không rỗng
+        if full_response:
+             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
     except Exception as e:
         st.error(f"Đã có lỗi xảy ra khi gọi API của Gemini: {e}")
